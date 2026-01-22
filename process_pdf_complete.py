@@ -5,6 +5,13 @@ Complete PDF to CSV Processing Pipeline
 3. Structure voter data
 4. Fix ই-কার encoding issues
 5. Generate final clean CSV
+
+Usage:
+    python process_pdf_complete.py [pdf_filename]
+    
+Example:
+    python process_pdf_complete.py 001.pdf
+    python process_pdf_complete.py 002.pdf
 """
 
 import sys
@@ -26,30 +33,45 @@ def main():
     print("=" * 60)
     print()
     
-    # Step 1: Find PDF file
-    print("Step 1: Finding PDF file...")
-    current_dir = Path('.')
-    pdf_files = list(current_dir.glob('*.pdf'))
+    # Step 1: Get PDF file name
+    if len(sys.argv) > 1:
+        # PDF file name provided as argument
+        pdf_filename = sys.argv[1]
+        pdf_file = Path(pdf_filename)
+        
+        if not pdf_file.exists():
+            print(f"[ERROR] PDF file not found: {pdf_filename}")
+            print("\nUsage: python process_pdf_complete.py [pdf_filename]")
+            print("Example: python process_pdf_complete.py 001.pdf")
+            return
+        
+        print(f"Step 1: Using PDF file: {pdf_filename}")
+    else:
+        # Find PDF file automatically
+        print("Step 1: Finding PDF file...")
+        current_dir = Path('.')
+        pdf_files = list(current_dir.glob('*.pdf'))
+        
+        if not pdf_files:
+            print("[ERROR] No PDF files found in current directory")
+            print("\nUsage: python process_pdf_complete.py [pdf_filename]")
+            print("Example: python process_pdf_complete.py 001.pdf")
+            return
+        
+        pdf_file = pdf_files[0]
+        pdf_filename = pdf_file.name
+        print(f"[OK] Found PDF: {pdf_filename}")
     
-    if not pdf_files:
-        print("❌ No PDF files found in current directory")
-        return
-    
-    pdf_file = pdf_files[0]
-    try:
-        print(f"[OK] Found PDF: {pdf_file.name}")
-    except:
-        print(f"[OK] Found PDF file")
     print()
     
-    # Step 2: Convert PDF to CSV
+    # Step 2: Convert PDF to CSV (same name as PDF)
     print("Step 2: Converting PDF to CSV...")
     try:
         from pdf_to_csv import PDFToCSVConverter
         import pdfplumber
         import pandas as pd
         
-        # Convert PDF to CSV directly
+        # Convert PDF to CSV with same name
         converter = PDFToCSVConverter(str(pdf_file))
         
         # Extract text
@@ -67,12 +89,12 @@ def main():
                                 'Text': cleaned_line
                             })
         
-        # Save to CSV
-        csv_file = Path(pdf_file).with_suffix('.csv')
+        # Save to CSV with same name as PDF
+        csv_file = pdf_file.with_suffix('.csv')
         if all_text_lines:
             df = pd.DataFrame(all_text_lines)
             df.to_csv(csv_file, index=False, encoding='utf-8-sig')
-            print(f"[OK] CSV created: {len(df)} lines")
+            print(f"[OK] CSV created: {csv_file.name} ({len(df)} lines)")
         else:
             print("[ERROR] No text extracted from PDF")
             return
@@ -122,8 +144,9 @@ def main():
     try:
         from structure_voter_data_v2 import structure_voter_data
         
-        structured_df = structure_voter_data(csv_file)
-        structured_file = Path(csv_file).with_stem(Path(csv_file).stem + '_structured')
+        structured_df = structure_voter_data(str(csv_file))
+        # Use same base name as PDF
+        structured_file = csv_file.with_stem(csv_file.stem + '_structured')
         structured_df.to_csv(structured_file, index=False, encoding='utf-8-sig')
         print(f"[OK] Structured data: {len(structured_df)} people")
         print(f"[OK] Saved to: {structured_file.name}")
@@ -159,6 +182,7 @@ def main():
             after = df[col].astype(str).str.contains('ি[ক-হ]', na=False).sum()
             fixed_count += (before - after)
         
+        # Final file with same base name
         final_file = structured_file.with_stem(structured_file.stem + '_final')
         df.to_csv(final_file, index=False, encoding='utf-8-sig')
         
@@ -181,7 +205,7 @@ def main():
     print("=" * 60)
     print()
     print("Generated Files:")
-    print(f"  1. Raw CSV: {Path(csv_file).name}")
+    print(f"  1. Raw CSV: {csv_file.name}")
     print(f"  2. Structured CSV: {structured_file.name}")
     print(f"  3. Final Clean CSV: {final_file.name}")
     print()

@@ -4,11 +4,6 @@ echo PDF to CSV Converter
 echo ====================
 echo.
 echo Enter PDF file name (e.g., 001.pdf, 002.pdf):
-echo Or press Enter to use first PDF in folder
 set /p PDFNAME="PDF file: "
-if "%PDFNAME%"=="" (
-    python process_pdf_complete.py
-) else (
-    python process_pdf_complete.py %PDFNAME%
-)
+python process_pdf_complete.py %PDFNAME%
 pause
