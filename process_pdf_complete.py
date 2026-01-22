@@ -64,30 +64,42 @@ def main():
     
     print()
     
-    # Step 2: Convert PDF to CSV (same name as PDF)
-    print("Step 2: Converting PDF to CSV...")
+    # Step 2: Convert PDF to CSV (same name as PDF) - Using Advanced Extractor
+    print("Step 2: Converting PDF to CSV (Advanced Extraction)...")
     try:
-        from pdf_to_csv import PDFToCSVConverter
-        import pdfplumber
         import pandas as pd
         
-        # Convert PDF to CSV with same name
-        converter = PDFToCSVConverter(str(pdf_file))
+        # Try advanced extractor first (PyMuPDF)
+        try:
+            from pdf_extractor_advanced import AdvancedPDFExtractor
+            print("  Using PyMuPDF for better text extraction...")
+            extractor = AdvancedPDFExtractor(str(pdf_file))
+            all_text_lines = extractor.extract_text_advanced()
+            
+            if not all_text_lines or len(all_text_lines) < 10:
+                print("  Warning: Limited text extracted, trying fallback method...")
+                all_text_lines = extractor.extract_text_with_ocr_fallback()
         
-        # Extract text
-        all_text_lines = []
-        with pdfplumber.open(str(pdf_file)) as pdf:
-            for page_num, page in enumerate(pdf.pages, 1):
-                text = page.extract_text()
-                if text:
-                    lines = text.split('\n')
-                    for line in lines:
-                        cleaned_line = converter._clean_bengali_text(line)
-                        if cleaned_line.strip():
-                            all_text_lines.append({
-                                'Page': page_num,
-                                'Text': cleaned_line
-                            })
+        except ImportError:
+            print("  PyMuPDF not available, using pdfplumber...")
+            from pdf_to_csv import PDFToCSVConverter
+            import pdfplumber
+            
+            converter = PDFToCSVConverter(str(pdf_file))
+            all_text_lines = []
+            
+            with pdfplumber.open(str(pdf_file)) as pdf:
+                for page_num, page in enumerate(pdf.pages, 1):
+                    text = page.extract_text()
+                    if text:
+                        lines = text.split('\n')
+                        for line in lines:
+                            cleaned_line = converter._clean_bengali_text(line)
+                            if cleaned_line.strip():
+                                all_text_lines.append({
+                                    'Page': page_num,
+                                    'Text': cleaned_line
+                                })
         
         # Save to CSV with same name as PDF
         csv_file = pdf_file.with_suffix('.csv')
@@ -172,28 +184,52 @@ def main():
             text = re.sub(r'(?<![ক-হ])ি([ক-হ])', r'\1ি', text)
             return text
         
+        def fix_double_characters(text):
+            """Fix double character issues"""
+            if not text or not isinstance(text, str):
+                return text
+            # Common double character patterns
+            fixes = [
+                ('মমো', 'মো'), ('হহো', 'হো'), ('ররো', 'রো'), ('গগো', 'গো'), ('ককো', 'কো'),
+                ('মমী', 'মী'), ('মমোঃ', 'মোঃ'), ('মমোছাঃ', 'মোছাঃ'), ('মমোসাঃ', 'মোসাঃ'),
+                ('মমোস্ত', 'মোস্ত'), ('মমোত', 'মোত'), ('মমোজ', 'মোজ'), ('মমোল', 'মোল'),
+            ]
+            for double, single in fixes:
+                text = text.replace(double, single)
+            return text
+        
         df = pd.read_csv(structured_file, encoding='utf-8-sig')
         text_columns = df.select_dtypes(include=['object']).columns
         
-        fixed_count = 0
+        ikar_fixed = 0
+        double_fixed = 0
         for col in text_columns:
-            before = df[col].astype(str).str.contains('ি[ক-হ]', na=False).sum()
+            # Fix ই-কার
+            before_ikar = df[col].astype(str).str.contains('ি[ক-হ]', na=False).sum()
             df[col] = df[col].apply(fix_ikar_position)
-            after = df[col].astype(str).str.contains('ি[ক-হ]', na=False).sum()
-            fixed_count += (before - after)
+            after_ikar = df[col].astype(str).str.contains('ি[ক-হ]', na=False).sum()
+            ikar_fixed += (before_ikar - after_ikar)
+            
+            # Fix double characters
+            before_double = df[col].astype(str)
+            df[col] = df[col].apply(fix_double_characters)
+            after_double = df[col].astype(str)
+            double_fixed += (before_double != after_double).sum()
         
         # Final file with same base name
         final_file = structured_file.with_stem(structured_file.stem + '_final')
         df.to_csv(final_file, index=False, encoding='utf-8-sig')
         
-        if fixed_count > 0:
-            print(f"[OK] Fixed {fixed_count} ই-কার issues")
-        else:
-            print("[OK] No ই-কার issues found")
+        if ikar_fixed > 0:
+            print(f"[OK] Fixed {ikar_fixed} ই-কার issues")
+        if double_fixed > 0:
+            print(f"[OK] Fixed {double_fixed} double character issues")
+        if ikar_fixed == 0 and double_fixed == 0:
+            print("[OK] No encoding issues found")
         print(f"[OK] Final file: {final_file.name}")
         print()
     except Exception as e:
-        print(f"[WARNING] Could not fix ই-কার issues: {str(e)}")
+        print(f"[WARNING] Could not fix encoding issues: {str(e)}")
         import traceback
         traceback.print_exc()
         print()
